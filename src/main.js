@@ -218,7 +218,7 @@ await Actor.main(async () => {
     console.log('🚀 Starting CarGurus Stealth Scraper with UI Filters...');
 
     // Open persistent Key-Value Store (survives between runs)
-    const kv = await Actor.openKeyValueStore('SCRAPER_STATE_NEWEST');
+    const kv = await Actor.openKeyValueStore('scraper-state-newest');
 
     // Get or initialize page state with daily reset
     let startPage = currentPage;
