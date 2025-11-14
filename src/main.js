@@ -175,7 +175,7 @@ async function applySortByNewest(page) {
     try {
         console.log(`🆕 Setting sort order to: Newest listings first`);
 
-        // Click the sort dropdown button
+        // Click the sort dropdown button to open it
         const sortButton = page.locator('button[role="combobox"][aria-label="Sort by:"]');
         await sortButton.waitFor({ state: 'visible', timeout: 360000 });
         await sortButton.click({ timeout: 360000 });
@@ -183,9 +183,8 @@ async function applySortByNewest(page) {
         console.log(`  ✅ Opened sort dropdown`);
         await page.waitForTimeout(1000);
 
-        // Click the "Newest listings first" option
-        // Look for the option with aria-label="Newest listings first"
-        await page.click('span[role="textbox"][aria-label="Newest listings first"]', { timeout: 360000 });
+        // Click the actual dropdown option (div with role="option")
+        await page.click('div[role="option"]:has-text("Newest listings first")', { timeout: 360000 });
 
         console.log(`  ✅ Selected "Newest listings first"`);
         await page.waitForTimeout(2000); // Wait for results to update
