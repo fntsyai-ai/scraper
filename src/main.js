@@ -41,10 +41,10 @@ async function setSearchRadius(page, searchRadius) {
 
         // Select the search distance dropdown (6-minute timeout)
         const dropdown = await page.locator('select[data-testid="select-filter-distance"]');
-        await dropdown.waitFor({ state: 'visible', timeout: 360000 });
+        await dropdown.waitFor({ state: 'visible', timeout: 90000 });
 
         // Select the value (50000 for Nationwide, or specific km value)
-        await dropdown.selectOption(searchRadius.toString(), { timeout: 360000 });
+        await dropdown.selectOption(searchRadius.toString(), { timeout: 90000 });
 
         console.log(`  ✅ Search radius set successfully`);
 
@@ -61,14 +61,14 @@ async function applyBodyTypeFilter(page, bodyTypes) {
         console.log(`🚗 Setting body types: ${bodyTypes.join(', ')}`);
 
         // Open Body Style accordion (6-minute timeout)
-        await page.click('#BodyStyle-accordion-trigger', { timeout: 360000 });
+        await page.click('#BodyStyle-accordion-trigger', { timeout: 90000 });
         await page.waitForTimeout(1000);
 
         // Click checkboxes for each body type
         for (const bodyType of bodyTypes) {
             if (bodyType.includes('Pickup')) {
                 // Find and click Pickup Truck checkbox (6-minute timeout)
-                await page.click('button[id*="PICKUP"], label:has-text("Pickup Truck")', { timeout: 360000 });
+                await page.click('button[id*="PICKUP"], label:has-text("Pickup Truck")', { timeout: 90000 });
                 await page.waitForTimeout(500);
                 console.log('  ✅ Added Pickup Truck');
             }
@@ -86,7 +86,7 @@ async function applyMakeFilter(page, makes) {
         console.log(`🏭 Setting makes: ${makes.join(', ')}`);
 
         // Open Make & Model accordion
-        await page.click('#MakeAndModel-accordion-trigger', { timeout: 360000 });
+        await page.click('#MakeAndModel-accordion-trigger', { timeout: 90000 });
         await page.waitForTimeout(1000);
 
         // Click checkbox for each make (stable approach)
@@ -96,7 +96,7 @@ async function applyMakeFilter(page, makes) {
                 const makeId = make.toUpperCase() === 'RAM' ? 'RAM' : make;
 
                 // Click the make button (escape dots in ID selector) with 6-minute timeout
-                await page.click(`#FILTER\\.MAKE_MODEL\\.${makeId}`, { timeout: 360000 });
+                await page.click(`#FILTER\\.MAKE_MODEL\\.${makeId}`, { timeout: 90000 });
                 console.log(`  ✅ Added ${make}`);
                 await page.waitForTimeout(500);
             } catch (error) {
@@ -115,15 +115,15 @@ async function applyPriceFilter(page) {
         console.log(`💰 Setting minimum price to: $35,000 CAD`);
 
         // Open Price accordion (6-minute timeout)
-        await page.click('#Price-accordion-trigger', { timeout: 360000 });
+        await page.click('#Price-accordion-trigger', { timeout: 90000 });
         await page.waitForTimeout(1000);
 
         // Find the MINIMUM slider specifically (not maximum)
         const minSlider = page.locator('[role="slider"][aria-label="Minimum"]');
-        await minSlider.waitFor({ state: 'visible', timeout: 360000 });
+        await minSlider.waitFor({ state: 'visible', timeout: 90000 });
 
         // Click on the minimum slider to focus it
-        await minSlider.click({ timeout: 360000 });
+        await minSlider.click({ timeout: 90000 });
         await page.waitForTimeout(500);
 
         // Set the slider value to 24 (which equals $35,000 CAD)
@@ -150,14 +150,14 @@ async function applyDealRatingFilter(page, dealRatings) {
         console.log(`⭐ Setting deal ratings: ${dealRatings.join(', ')}`);
 
         // Open Deal Rating accordion (6-minute timeout)
-        await page.click('#DealRating-accordion-trigger', { timeout: 360000 });
+        await page.click('#DealRating-accordion-trigger', { timeout: 90000 });
         await page.waitForTimeout(1000);
 
         // Click checkboxes for each deal rating
         for (const rating of dealRatings) {
             try {
                 // Click with 6-minute timeout
-                await page.click(`#FILTER\\.DEAL_RATING\\.${rating}`, { timeout: 360000 });
+                await page.click(`#FILTER\\.DEAL_RATING\\.${rating}`, { timeout: 90000 });
                 console.log(`  ✅ Added ${rating.replace('_', ' ')}`);
                 await page.waitForTimeout(300);
             } catch (error) {
@@ -177,14 +177,14 @@ async function applySortByNewest(page) {
 
         // Click the sort dropdown button to open it
         const sortButton = page.locator('button[role="combobox"][aria-label="Sort by:"]');
-        await sortButton.waitFor({ state: 'visible', timeout: 360000 });
-        await sortButton.click({ timeout: 360000 });
+        await sortButton.waitFor({ state: 'visible', timeout: 90000 });
+        await sortButton.click({ timeout: 90000 });
 
         console.log(`  ✅ Opened sort dropdown`);
         await page.waitForTimeout(1000);
 
         // Click the actual dropdown option (div with role="option")
-        await page.click('div[role="option"]:has-text("Newest listings first")', { timeout: 360000 });
+        await page.click('div[role="option"]:has-text("Newest listings first")', { timeout: 90000 });
 
         console.log(`  ✅ Selected "Newest listings first"`);
         await page.waitForTimeout(2000); // Wait for results to update
@@ -310,11 +310,44 @@ await Actor.main(async () => {
         await page.mouse.move(300, 400);
         await page.waitForTimeout(1000);
 
-        // STEP 2: Apply all filters via UI (once for all pages)
-        await applyFilters(page, filters, searchRadius);
+        // STEP 2: Apply all filters via UI (with retry on failure)
+        let filtersSucceeded = false;
+        for (let filterAttempt = 1; filterAttempt <= 3; filterAttempt++) {
+            await applyFilters(page, filters, searchRadius);
+
+            // Verify filters worked by checking listings exist
+            await page.waitForTimeout(3000);
+            const listingCount = await page.evaluate(() =>
+                document.querySelectorAll('a[data-testid="car-blade-link"]').length
+            );
+
+            if (listingCount > 0) {
+                filtersSucceeded = true;
+                console.log(`✅ Filters applied! Found ${listingCount} listings.`);
+                break;
+            }
+
+            if (filterAttempt < 3) {
+                console.log(`⚠️ Filter attempt ${filterAttempt}/3 failed (no listings found) — refreshing page and retrying...`);
+                await page.goto(baseUrl, { waitUntil: 'domcontentloaded', timeout: 90000 });
+                await page.waitForTimeout(5000);
+                // Re-simulate human behavior
+                await page.mouse.move(100, 200);
+                await page.waitForTimeout(500);
+                await page.mouse.move(300, 400);
+                await page.waitForTimeout(1000);
+            } else {
+                console.log(`❌ All 3 filter attempts failed — aborting run`);
+            }
+        }
+
+        if (!filtersSucceeded) {
+            await browser.close();
+            console.log('🛑 Could not apply filters after 3 attempts. Will retry on next scheduled run.');
+            return;
+        }
 
         // STEP 3: Get the filtered URL with searchId
-        await page.waitForTimeout(3000);
         const filteredUrl = page.url();
         const baseUrlWithFilters = filteredUrl.split('#')[0];
 
@@ -424,7 +457,7 @@ await Actor.main(async () => {
 
                 // Open listing in a new tab — search results tab stays untouched
                 listingPage = await context.newPage();
-                await listingPage.goto(listingHref, { waitUntil: 'domcontentloaded', timeout: 30000 });
+                await listingPage.goto(listingHref, { waitUntil: 'domcontentloaded', timeout: 90000 });
                 await listingPage.waitForSelector('h1[data-cg-ft="vdp-listing-title"]', { timeout: 15000 });
                 console.log(`  ✅ Detail page loaded`);
 
