@@ -272,77 +272,78 @@ await Actor.main(async () => {
     console.log(`🌍 Search radius: ${searchRadius === 50000 ? 'Nationwide' : searchRadius + ' km'}`);
     console.log(`📊 Max results per page: ${maxResults}`);
 
-    // Launch browser with stealth
-    const browser = await chromium.launch({
-        headless: true,
-        args: [
-            '--disable-blink-features=AutomationControlled',
-            '--disable-features=IsolateOrigins,site-per-process',
-            '--disable-web-security',
-            '--disable-features=VizDisplayCompositor',
-        ],
-    });
+    const baseUrl = 'https://www.cargurus.ca/Cars/l-Used-SUV-Crossover-bg7';
 
-    const context = await browser.newContext({
-        viewport: { width: 1920, height: 1080 },
-        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        locale: 'en-CA',
-        timezoneId: 'America/Toronto',
-        geolocation: { longitude: -79.3832, latitude: 43.6532 },
-        permissions: ['geolocation'],
-    });
+    // Launch browser, apply filters — full browser restart on failure (up to 3 attempts)
+    let browser, context, page;
+    let filtersSucceeded = false;
 
-    const page = await context.newPage();
+    for (let filterAttempt = 1; filterAttempt <= 3; filterAttempt++) {
+        // Fresh browser every attempt
+        if (browser) {
+            await browser.close().catch(() => {});
+        }
 
-    try {
-        // STEP 1: Navigate to base SUV page
-        const baseUrl = 'https://www.cargurus.ca/Cars/l-Used-SUV-Crossover-bg7';
-        console.log(`\n🌐 Visiting base page: ${baseUrl}`);
+        console.log(`\n🔄 Starting fresh browser (attempt ${filterAttempt}/3)...`);
 
-        await page.goto(baseUrl, {
-            waitUntil: 'domcontentloaded',
-            timeout: 90000
+        browser = await chromium.launch({
+            headless: true,
+            args: [
+                '--disable-blink-features=AutomationControlled',
+                '--disable-features=IsolateOrigins,site-per-process',
+                '--disable-web-security',
+                '--disable-features=VizDisplayCompositor',
+            ],
         });
 
-        console.log('⏳ Waiting for page to load...');
-        await page.waitForTimeout(5000);
+        context = await browser.newContext({
+            viewport: { width: 1920, height: 1080 },
+            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            locale: 'en-CA',
+            timezoneId: 'America/Toronto',
+            geolocation: { longitude: -79.3832, latitude: 43.6532 },
+            permissions: ['geolocation'],
+        });
 
-        // Simulate human behavior
-        console.log('🖱️ Simulating human behavior...');
-        await page.mouse.move(100, 200);
-        await page.waitForTimeout(500);
-        await page.mouse.move(300, 400);
-        await page.waitForTimeout(1000);
+        page = await context.newPage();
 
-        // STEP 2: Apply all filters via UI (with retry on failure)
-        let filtersSucceeded = false;
-        for (let filterAttempt = 1; filterAttempt <= 3; filterAttempt++) {
+        try {
+            console.log(`\n🌐 Visiting base page: ${baseUrl}`);
+            await page.goto(baseUrl, { waitUntil: 'domcontentloaded', timeout: 90000 });
+
+            console.log('⏳ Waiting for page to load...');
+            await page.waitForTimeout(5000);
+
+            console.log('🖱️ Simulating human behavior...');
+            await page.mouse.move(100, 200);
+            await page.waitForTimeout(500);
+            await page.mouse.move(300, 400);
+            await page.waitForTimeout(1000);
+
             const result = await applyFilters(page, filters, searchRadius);
 
             if (result) {
                 filtersSucceeded = true;
                 break;
             }
-
-            if (filterAttempt < 3) {
-                console.log(`⚠️ Filter attempt ${filterAttempt}/3 failed — refreshing page and retrying...`);
-                await page.goto(baseUrl, { waitUntil: 'domcontentloaded', timeout: 90000 });
-                await page.waitForTimeout(5000);
-                await page.mouse.move(100, 200);
-                await page.waitForTimeout(500);
-                await page.mouse.move(300, 400);
-                await page.waitForTimeout(1000);
-            } else {
-                console.log(`❌ All 3 filter attempts failed — aborting run`);
-            }
+        } catch (e) {
+            console.log(`  ❌ Browser attempt ${filterAttempt} crashed: ${e.message}`);
         }
 
-        if (!filtersSucceeded) {
-            await browser.close();
-            console.log('🛑 Could not apply filters after 3 attempts. Will retry on next scheduled run.');
-            return;
+        if (filterAttempt < 3) {
+            console.log(`⚠️ Filter attempt ${filterAttempt}/3 failed — closing browser and starting fresh...`);
+        } else {
+            console.log(`❌ All 3 filter attempts failed — aborting run`);
         }
+    }
 
+    if (!filtersSucceeded) {
+        if (browser) await browser.close().catch(() => {});
+        console.log('🛑 Could not apply filters after 3 attempts. Will retry on next scheduled run.');
+        return;
+    }
+
+    try {
         // STEP 3: Get the filtered URL with searchId
         const filteredUrl = page.url();
         const baseUrlWithFilters = filteredUrl.split('#')[0];
