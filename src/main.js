@@ -12,27 +12,17 @@ chromium.use(StealthPlugin());
 async function applyFilters(page, filters, searchRadius) {
     console.log('🎯 Applying UI filters...');
 
-    // 1. SEARCH RADIUS (Nationwide)
-    await setSearchRadius(page, searchRadius);
-
-    // 2. BODY TYPE FILTER (Add Pickup Truck)
-    await applyBodyTypeFilter(page, filters.bodyTypes);
-
-    // 3. MAKE & MODEL FILTER (Ford, GMC, Chevrolet, Cadillac)
+    if (!await setSearchRadius(page, searchRadius)) return false;
+    if (!await applyBodyTypeFilter(page, filters.bodyTypes)) return false;
     if (filters.makes && filters.makes.length > 0) {
-        await applyMakeFilter(page, filters.makes);
+        if (!await applyMakeFilter(page, filters.makes)) return false;
     }
-
-    // 4. PRICE FILTER (Minimum $35,000)
-    await applyPriceFilter(page);
-
-    // 5. DEAL RATING FILTER (Great/Good/Fair)
-    await applyDealRatingFilter(page, filters.dealRatings);
-
-    // 6. SORT BY NEWEST LISTINGS - LAST
-    await applySortByNewest(page);
+    if (!await applyPriceFilter(page)) return false;
+    if (!await applyDealRatingFilter(page, filters.dealRatings)) return false;
+    if (!await applySortByNewest(page)) return false;
 
     console.log('✅ All filters applied successfully!');
+    return true;
 }
 
 async function setSearchRadius(page, searchRadius) {
@@ -50,9 +40,11 @@ async function setSearchRadius(page, searchRadius) {
 
         // Wait for results to update
         await page.waitForTimeout(2000);
+        return true;
 
     } catch (error) {
-        console.log(`  ⚠️ Search radius error: ${error.message} (continuing...)`);
+        console.log(`  ❌ Search radius failed: ${error.message}`);
+        return false;
     }
 }
 
@@ -76,8 +68,10 @@ async function applyBodyTypeFilter(page, bodyTypes) {
         }
 
         await page.waitForTimeout(2000); // Wait for results to update
+        return true;
     } catch (error) {
-        console.log(`  ⚠️ Body type filter error: ${error.message} (continuing...)`);
+        console.log(`  ❌ Body type filter failed: ${error.message}`);
+        return false;
     }
 }
 
@@ -100,13 +94,16 @@ async function applyMakeFilter(page, makes) {
                 console.log(`  ✅ Added ${make}`);
                 await page.waitForTimeout(500);
             } catch (error) {
-                console.log(`  ⚠️ Could not click ${make}: ${error.message}`);
+                console.log(`  ❌ Could not click ${make}: ${error.message}`);
+                return false;
             }
         }
 
         await page.waitForTimeout(2000); // Wait for results to update
+        return true;
     } catch (error) {
-        console.log(`  ⚠️ Make filter error: ${error.message} (continuing...)`);
+        console.log(`  ❌ Make filter failed: ${error.message}`);
+        return false;
     }
 }
 
@@ -139,9 +136,11 @@ async function applyPriceFilter(page) {
 
         console.log(`  ✅ Minimum price set to $35,000`);
         await page.waitForTimeout(2000); // Wait for results to update
+        return true;
 
     } catch (error) {
-        console.log(`  ⚠️ Price filter error: ${error.message} (continuing...)`);
+        console.log(`  ❌ Price filter failed: ${error.message}`);
+        return false;
     }
 }
 
@@ -161,13 +160,16 @@ async function applyDealRatingFilter(page, dealRatings) {
                 console.log(`  ✅ Added ${rating.replace('_', ' ')}`);
                 await page.waitForTimeout(300);
             } catch (error) {
-                console.log(`  ⚠️ Could not click ${rating}: ${error.message}`);
+                console.log(`  ❌ Could not click ${rating}: ${error.message}`);
+                return false;
             }
         }
 
         await page.waitForTimeout(2000); // Wait for results to update
+        return true;
     } catch (error) {
-        console.log(`  ⚠️ Deal rating filter error: ${error.message} (continuing...)`);
+        console.log(`  ❌ Deal rating filter failed: ${error.message}`);
+        return false;
     }
 }
 
@@ -188,9 +190,11 @@ async function applySortByNewest(page) {
 
         console.log(`  ✅ Selected "Newest listings first"`);
         await page.waitForTimeout(2000); // Wait for results to update
+        return true;
 
     } catch (error) {
-        console.log(`  ⚠️ Sort by newest error: ${error.message} (continuing...)`);
+        console.log(`  ❌ Sort by newest failed: ${error.message}`);
+        return false;
     }
 }
 
@@ -313,25 +317,17 @@ await Actor.main(async () => {
         // STEP 2: Apply all filters via UI (with retry on failure)
         let filtersSucceeded = false;
         for (let filterAttempt = 1; filterAttempt <= 3; filterAttempt++) {
-            await applyFilters(page, filters, searchRadius);
+            const result = await applyFilters(page, filters, searchRadius);
 
-            // Verify filters worked by checking listings exist
-            await page.waitForTimeout(3000);
-            const listingCount = await page.evaluate(() =>
-                document.querySelectorAll('a[data-testid="car-blade-link"]').length
-            );
-
-            if (listingCount > 0) {
+            if (result) {
                 filtersSucceeded = true;
-                console.log(`✅ Filters applied! Found ${listingCount} listings.`);
                 break;
             }
 
             if (filterAttempt < 3) {
-                console.log(`⚠️ Filter attempt ${filterAttempt}/3 failed (no listings found) — refreshing page and retrying...`);
+                console.log(`⚠️ Filter attempt ${filterAttempt}/3 failed — refreshing page and retrying...`);
                 await page.goto(baseUrl, { waitUntil: 'domcontentloaded', timeout: 90000 });
                 await page.waitForTimeout(5000);
-                // Re-simulate human behavior
                 await page.mouse.move(100, 200);
                 await page.waitForTimeout(500);
                 await page.mouse.move(300, 400);
